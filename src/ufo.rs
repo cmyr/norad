@@ -1,7 +1,7 @@
 //! Reading and (maybe) writing Unified Font Object files.
 
 use crate::layer::Layer;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::Error;
 
@@ -29,19 +29,24 @@ impl Ufo {
     /// spec.
     ///
     /// [v3]: http://unifiedfontobject.org/versions/ufo3/
-    pub fn load<P: Into<PathBuf>>(path: P) -> Result<Ufo, Error> {
-        let path = path.into();
-        let contents_path = path.join(LAYER_CONTENTS_FILE);
-        let mut contents: Vec<(String, PathBuf)> = plist::from_file(contents_path)?;
-        let layers: Result<Vec<LayerInfo>, Error> = contents
-            .drain(..)
-            .map(|(name, p)| {
-                let layer_path = path.join(&p);
-                let layer = Layer::load(layer_path)?;
-                Ok(LayerInfo { name, path: p, layer })
-            })
-            .collect();
-        Ok(Ufo { layers: layers? })
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Ufo, Error> {
+        let path = path.as_ref();
+        return load_impl(path);
+
+        // minimize monomorphization
+        fn load_impl(path: &Path) -> Result<Ufo, Error> {
+            let contents_path = path.join(LAYER_CONTENTS_FILE);
+            let mut contents: Vec<(String, PathBuf)> = plist::from_file(contents_path)?;
+            let layers: Result<Vec<LayerInfo>, Error> = contents
+                .drain(..)
+                .map(|(name, p)| {
+                    let layer_path = path.join(&p);
+                    let layer = Layer::load(layer_path)?;
+                    Ok(LayerInfo { name, path: p, layer })
+                })
+                .collect();
+            Ok(Ufo { layers: layers? })
+        }
     }
 
     /// Returns the first layer matching a predicate. The predicate takes a

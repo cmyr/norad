@@ -32,6 +32,7 @@ impl GlifParser {
         reader.trim_text(true);
 
         let glyph = start(&mut reader, &mut buf)?;
+        eprintln!("starting {:?}", glyph);
         let this = GlifParser(glyph);
         this.parse_body(&mut reader, &mut buf)
     }
@@ -41,6 +42,7 @@ impl GlifParser {
             match reader.read_event(buf)? {
                 Event::Start(start) | Event::Empty(start) => {
                     let tag_name = reader.decode(&start.name());
+                    eprintln!("'{}'", tag_name);
                     match tag_name.borrow() {
                         "outline" => self.parse_outline(reader, buf)?,
                         "lib" => self.parse_lib(reader, buf)?, // do this at some point?
@@ -228,23 +230,24 @@ impl GlifParser {
         reader: &Reader<&[u8]>,
         data: BytesStart<'a>,
     ) -> Result<(), Error> {
+        let mut advance = Advance::default();
         for attr in data.attributes() {
             let attr = attr?;
             if attr.key == b"width" || attr.key == b"height" {
                 let value = attr.unescaped_value()?;
                 let value = reader.decode(&value);
                 let value: f32 = value.parse().map_err(|_| err!(reader, ErrorKind::BadNumber))?;
-                let advance = match attr.key {
-                    b"width" => Advance::Width(value),
-                    b"height" => Advance::Height(value),
+                match attr.key {
+                    b"width" => advance.width = value,
+                    b"height" => advance.height = value,
                     _ => unreachable!(),
                 };
-                if self.0.advance.is_some() {
-                    return Err(err!(reader, ErrorKind::UnexpectedDuplicate))?;
-                }
-                self.0.advance = Some(advance);
             }
         }
+        if self.0.advance.is_some() {
+            return Err(err!(reader, ErrorKind::UnexpectedDuplicate))?;
+        }
+        self.0.advance = Some(advance);
         Ok(())
     }
 
@@ -400,6 +403,7 @@ impl GlifParser {
 fn start(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) -> Result<Glyph, Error> {
     loop {
         match reader.read_event(buf)? {
+            Event::Comment(_) => (),
             Event::Decl(_decl) => (),
             Event::Start(ref start) if start.name() == b"glyph" => {
                 let mut name = String::new();
